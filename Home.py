@@ -2,14 +2,12 @@ import streamlit as st
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-# Page layout configuration
 st.set_page_config(
     page_title="Uppseekers OS - Portal Gateway", 
     layout="wide", 
     initial_sidebar_state="expanded"
 )
 
-# Connect to database via Streamlit Secrets
 def get_db_connection():
     conn_params = st.secrets["connections"]["postgresql"]
     conn = psycopg2.connect(
@@ -22,7 +20,6 @@ def get_db_connection():
     )
     return conn
 
-# Maintain user session states across all multi-page elements
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 if "user_info" not in st.session_state:
@@ -50,8 +47,7 @@ def login_form():
                 conn.close()
                 
                 if user:
-                    # Direct, clean password check to ensure your entry bypasses encryption library friction
-                    if password == "Uppseekers2026!":
+                    if password == "Uppseekers2026!" or password == "Welcome2026!":
                         st.session_state.authenticated = True
                         st.session_state.user_info = {
                             "id": str(user['id']),
@@ -62,31 +58,75 @@ def login_form():
                         st.success("Authentication confirmed! Welcome back.")
                         st.rerun()
                     else:
-                        st.error("Invalid password provided. Please try again.")
+                        st.error("Invalid password provided.")
                 else:
-                    st.error("Account email not found in our database records.")
+                    st.error("Account email not found.")
             except Exception as e:
                 st.error(f"System Connection Error: {str(e)}")
 
-def logout_user():
-    st.session_state.authenticated = False
-    st.session_state.user_info = None
-    st.rerun()
-
-# Execution Control
 if not st.session_state.authenticated:
     login_form()
 else:
-    # Sidebar layout navigation
+    # Sidebar
     st.sidebar.markdown(f"### Signed in as:\n**{st.session_state.user_info['name']}**")
     st.sidebar.info(f"Access Privilege: {st.session_state.user_info['role']}")
     if st.sidebar.button("Sign Out from System"):
-        logout_user()
+        st.session_state.authenticated = False
+        st.session_state.user_info = None
+        st.rerun()
     
-    # Live Application Interface
-    st.markdown("# 🚀 Uppseekers OS Main Gateway")
+    # Main View
+    st.markdown("# 🚀 Uppseekers OS Control Center")
     st.markdown("---")
-    st.success("🎉 Welcome to your operations center! The core system framework is 100% online and connected.")
     
-    st.markdown("### Operational Quick Links")
-    st.info("👈 Use the sidebar navigation menu on the left to seamlessly switch over to your **Dashboard Analytics** or view your **Student Journey Lifecycle Roadmap**!")
+    # ONLY ADMINS CAN CREATED USERS
+    if st.session_state.user_info['role'] == 'Admin':
+        st.subheader("👥 Add New Team Member or Student to the OS")
+        st.markdown("Fill out this form to register counselors, managers, researchers, or students into the platform data layer.")
+        
+        with st.form("create_user_form", clear_on_submit=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                new_first = st.text_input("First Name")
+                new_last = st.text_input("Last Name")
+                new_email = st.text_input("Login Email Address").strip().lower()
+            with col2:
+                # The exact roles mapped from our database rules blueprint
+                new_role = st.selectbox("System Workspace Access Role", ['Manager', 'Counselor', 'Researcher', 'Student', 'Parent', 'Admin'])
+                st.markdown("**Temporary System Password for their first login:**")
+                st.code("Welcome2026!", language="text")
+                
+            create_submit = st.form_submit_button("Save and Register User Account")
+            
+            if create_submit:
+                if not new_first or not new_last or not new_email:
+                    st.error("Please fill in all identity metrics before submitting.")
+                else:
+                    try:
+                        conn = get_db_connection()
+                        cur = conn.cursor()
+                        
+                        # Command to inject user safely into database files
+                        cur.execute("""
+                            INSERT INTO users (email, password_hash, role, first_name, last_name, is_active)
+                            VALUES (%s, %s, %s, %s, %s, TRUE) RETURNING id;
+                        """, (new_email, 'Welcome2026!', new_role, new_first, new_last))
+                        
+                        new_user_id = cur.fetchone()['id']
+                        
+                        # If user is a student, automatically initialize an empty profile roadmap sheet too!
+                        if new_role == 'Student':
+                            cur.execute("""
+                                INSERT INTO student_profiles (user_id, current_grade_level, target_enrollment_year, contracted_fee_usd, outstanding_balance_usd)
+                                VALUES (%s, 9, 2029, 0, 0);
+                            """, (new_user_id,))
+                            
+                        conn.commit()
+                        cur.close()
+                        conn.close()
+                        st.success(f"🎉 Account successfully initialized for {new_first} {new_last} as a {new_role}!")
+                    except Exception as e:
+                        st.error(f"Failed to write record to database. (Email might already be taken): {str(e)}")
+                        
+    st.markdown("---")
+    st.info("👈 Use the navigation pane on the left sidebar to access your live analytics dashboard or view the interactive student timeline engines.")
